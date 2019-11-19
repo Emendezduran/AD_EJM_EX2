@@ -45,7 +45,9 @@ Por isto o contido en graxas totais do prato p1 e de 20+60  = 80 unidades.
 
 package exa15;
 
+import static exa15.Plato.calcularContenido;
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -73,41 +75,39 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 import javax.xml.stream.XMLStreamWriter;
 
-
 public class Exa15 {
-    
-    public static Connection conexion=null;
+
+    public static Connection conexion = null;
     static File xml = new File("/home/oracle/Desktop/compartido/Exa15_2/ExExamenAD2/platos.xml");
     static File txt = new File("/home/oracle/Desktop/compartido/Exa15_2/ExExamenAD2/composicion.txt");
-    
-    public static Connection getConexion() throws SQLException  {
+
+    public static Connection getConexion() throws SQLException {
         String usuario = "hr";
         String password = "hr";
-        String host = "localhost"; 
+        String host = "localhost";
         String puerto = "1521";
         String sid = "orcl";
         String ulrjdbc = "jdbc:oracle:thin:" + usuario + "/" + password + "@" + host + ":" + puerto + ":" + sid;
-        
-           
-            conexion = DriverManager.getConnection(ulrjdbc);
-            return conexion;
-        }
-     
-     public static void closeConexion() throws SQLException {
-      conexion.close();
-      }
-     
-    public static ArrayList<Platos> leerPlatos(File txt) {
-        ArrayList<Platos> platosLeidos = new ArrayList<>();
+
+        conexion = DriverManager.getConnection(ulrjdbc);
+        return conexion;
+    }
+
+    public static void closeConexion() throws SQLException {
+        conexion.close();
+    }
+
+    public static ArrayList<Plato> leerPlatos(File xml) {
+        ArrayList<Plato> platosLeidos = new ArrayList<>();
         ObjectInputStream read;
         XMLStreamReader xmlSR = null;
         try {
             xmlSR = XMLInputFactory.newInstance().createXMLStreamReader(new FileReader(xml));
-            Platos plato = null;
+            Plato plato = null;
             while (xmlSR.hasNext()) {
                 if (xmlSR.getEventType() == XMLStreamConstants.START_ELEMENT) {
-                    if (xmlSR.getLocalName() == "producto") {
-                        plato = new Platos();
+                    if (xmlSR.getLocalName() == "Plato") {
+                        plato = new Plato();
                         plato.setCodigop(xmlSR.getAttributeValue(0));
                         platosLeidos.add(plato);
 
@@ -131,25 +131,32 @@ public class Exa15 {
         }
         return platosLeidos;
     }
-     
-    public static void leerComposiciones(){
+
+    public static void leerComposicion(Plato plato) {
 
         HashMap<String, Integer> composicion = new HashMap<>();
         BufferedReader read = null;
-        try {
 
+        try {
             read = new BufferedReader(new FileReader(txt));
             String[] puente = null;
 
             while (true) {
                 try {
-                    puente = read.readLine().split("#");
-                    Composicion comp = new Composicion(puente[0].toString(), puente[1].toString(), Integer.parseInt(puente[2]));
+                    String str = read.readLine();
+                    if(str==null)
+                        break;
+//                    System.out.println(str);
+                    puente = str.split("#");
+                    if (plato.getCodigop().equals(puente[0].toString())) {
+                        Componente comp = new Componente();
+                        comp.setCodc(puente[1].toString());
+                        plato.getComponentes().put(comp, Integer.parseInt(puente[2]));
+                    }
                 } catch (IOException ex) {
                     break;
                 }
             }
-
         } catch (IOException ex) {
             ex.printStackTrace();
         } finally {
@@ -161,93 +168,49 @@ public class Exa15 {
         }
     }
 
-     public static Integer selectGrasa(String codc) throws SQLException{
-         String sql = "Select graxa from componentes where codc='"+codc+"'";
-        int grasa = 0;
-         //conexion
-            Connection conn = getConexion();
-            //intermediario
-            Statement statement = conn.createStatement();
-            //resultados
-            ResultSet rs = statement.executeQuery(sql);
-            while (rs.next()) {
-                grasa = Integer.parseInt(rs.getNString("graxa"));  
-            }
-        return grasa;
-     }
+    public static void selectGrasa(Componente comp) throws SQLException {
+        String sql = "Select graxa from componentes where codc='" + comp.getCodc() + "'";
+        //conexion
+        Connection conn = getConexion();
+        //intermediario
+        Statement statement = conn.createStatement();
+        //resultados
+        ResultSet rs = statement.executeQuery(sql);
+        while (rs.next()) {
+            comp.setGraxa(Integer.parseInt(rs.getNString("graxa")));
+        }
+    }
 
-     public static Integer calcularContenido(int peso, int grasa){
-         int contGrasa = peso/100 * grasa;
-        return contGrasa;
-     }
-     
-     public static void escribirSerializado() throws IOException, SQLException{
-         
-        File xml = new File("/home/oracle/Desktop/compartido/Exa15/ExExameAD/platos.xml");
-        
+    public static void escribirSerializado(ArrayList<Plato> platos) {
+
+        File txt = new File("/home/oracle/Desktop/compartido/Exa15_2/ExExamenAD2/platosSerializados.txt");
+        ObjectOutputStream write = null;
+
         try {
-            XMLStreamWriter xmlSW = XMLOutputFactory.newInstance().createXMLStreamWriter(new FileWriter(xml));
-
-            //VersionXML DeclaracionInicial
-            xmlSW.writeStartDocument("1.0");
-
-            //EtiquetaRaizApertura
-            //<platos>
-            xmlSW.writeStartElement("platos");
-
-             for (Platos plato : leerPlatos(txt)){
-
-                //<plato codigop="cod">
-                xmlSW.writeStartElement("plato");
-                xmlSW.writeAttribute("codigop", plato.getCodigop());
-
-                //<nomep>
-                xmlSW.writeStartElement("nomep");
-                xmlSW.writeCharacters(plato.getNomep());
-                //</nomep>
-                xmlSW.writeEndElement();
-                
-                int totalGrasa = 0;
-                for (Entry<String,Integer> entry : selectComposicion(plato.getCodigop()).entrySet()) {
-                  totalGrasa += calcularContenido(entry.getValue(), selectGrasa(entry.getKey()));       
-                 }
-                //<graxaTotal>
-                xmlSW.writeStartElement("graxaTotal");
-                xmlSW.writeCharacters(Integer.toString(totalGrasa));
-                //</graxaTotal>
-                xmlSW.writeEndElement();
-                
-                //</plato>
-                xmlSW.writeEndElement();
+            write = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(txt)));
+            for (Plato plato : platos) {
+                write.writeObject(plato);
             }
-
-            //EtiquetaRaizCierre
-            //</platos>
-            xmlSW.writeEndElement();
-            xmlSW.close();
-        } catch (XMLStreamException ex) {
+            write.writeObject(null);
+            write.close();
+        } catch (IOException ex) {
             ex.printStackTrace();
-        } 
-     }
-     
-    public static void main(String[] args) throws FileNotFoundException, IOException, SQLException, ClassNotFoundException, XMLStreamException {
-    
-    for (Platos plato : leerPlatos(txt)){
-        System.out.println("CODIGO DO PLATO : " +plato.getCodigop()+ "\n" +
-                           "nome do plato : " +plato.getNomep());
-        int totalGrasa = 0;
-     for (Entry<String,Integer> entry : selectComposicion(plato.getCodigop()).entrySet()) {
-         System.out.println("codigo do componente : "+entry.getKey()+"-> graxa por cada 100 gr= "+selectGrasa(entry.getKey())+"\n" +
-                            "peso : "+entry.getValue()+"\n" +
-                            "total de graxa do componente = " + calcularContenido(entry.getValue(), selectGrasa(entry.getKey())) + "\n");
-        totalGrasa += calcularContenido(entry.getValue(), selectGrasa(entry.getKey()));       
-     }
-        System.out.println("TOTAL EN GRAXAS DO PLATO:" + totalGrasa + "\n");
-    }
-    
-    escribirXML();
-    closeConexion();       
-    }
-}
-      
+        }
 
+    }
+
+    public static void main(String[] args) throws FileNotFoundException, IOException, SQLException, ClassNotFoundException, XMLStreamException {
+
+        ArrayList<Plato> platos = leerPlatos(xml);
+
+        for (Plato plato : platos) {
+            leerComposicion(plato);
+            for (Entry<Componente, Integer> entry : plato.getComponentes().entrySet()) {
+                selectGrasa(entry.getKey());
+            }
+            System.out.println(plato.toString());
+        }
+        escribirSerializado(platos);
+    }
+
+}
